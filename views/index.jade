@@ -1,0 +1,45 @@
+extends layout
+
+block scripts
+  script(src='/javascripts/generation.js')
+
+block content
+  div.row.well
+    div.span11
+      h1(style="text-align:center") Bootstrap your next Android Application
+    div.span7
+      img(src='/images/ab-screenshot.png')
+    
+    div.span4
+      div
+        div.g-plusone
+        a.twitter-share-button(href="https://twitter.com/share", data-text="Bootstrap your Android App with Android Bootstrap", data-url="https://www.androidbootstrap.com", data-via="donnfelker", data-lang="en") Tweet
+      
+      p Android Boostrap includes a full working implementation of Fragments, Fragment Pager, Account Manager, <a href='https://github.com/jayway/maven-android-plugin'>android-maven-plugin</a>, <a href='http://roboguice.org'>RoboGuice 2</a>, <a href="http://www.actionbarsherlock.com">ActionBarSherlock 4</a>, <a href='http://viewpagerindicator.com/'>ViewPagerIndicator</a>, <a href="https://github.com/kevinsawicki/http-request">http-request</a>, <a href='http://code.google.com/p/google-gson/'>GSON</a>, <a href='http://code.google.com/p/robotium/'>Robotium</a> for integration testing, API Consumption with an API on <a href='http://www.parse.com'>Parse.com</a> and much more.
+
+      div
+        h3 Get Started Now
+        h5 Download the Source
+        a(href='http://www.github.com/donnfelker/android-bootstrap') Download from GitHub
+        h5 or
+        h5 Generate Your App Now
+      div
+        input(id='appName', type='text', placeholder="Your App Name")
+        input(id='packageName', type='text', placeholder="com.yourapp.package.name")    
+
+      div
+        input(type='submit', value='Generate Your App', id='generate-app', class='btn btn-primary btn-large')
+
+      div.alert.alert-error.alert-block(style="margin-top:10px")
+         <b>Note:</b> Currently application generation is <i>very beta</i>. <a href="https://github.com/donnfelker/android-bootstrap-site/issues">Report an issue</a>
+
+  div.row
+    div.span4
+        h4 Why was this developed? 
+        p To help get new Android applications off the ground quickly with minimal effort. To get an application built with this toolset could easily take 1-3 weeks with developing, debugging and hacking (depending on experience level within the android ecosystem). Android Bootsrap and its app generator eliminates the need for this work.
+    div.span4 
+        h4 What does app generation do?
+        p The app generation process does a brute force replace through the android-bootstrap source code and replaces build artifact names, package names and imports. It also generates the proper file structure for your package and updates account manager settings as well as build settings.
+    div.span4
+        h4 Why should I generate my app? 
+        p Because its AWEEEESSSOMMMMMEEEE!!!!! No, really, it is. Using the generator you can shave weeks of development, debugging and rid yourself of the continual face-palming that occurs during the highly error prone manual renaming process. 

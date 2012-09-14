@@ -1,0 +1,29 @@
+!!!
+html
+  include inc/header
+
+  body
+    div.navbar.navbar-fixed-top
+      div.navbar-inner
+        div.container
+          a(data-toggle='collapse', data-target='.nav-collapse').btn.btn-navbar
+            span.icon-bar
+            span.icon-bar
+            span.icon-bar
+          a(href='#').brand Android Bootstrap
+          ul.nav
+            li.active
+              a(href='#') Home
+            li
+              a(href='http://www.github.com/donnfelker/android-bootstrap') Open Source
+
+    div.container
+      block content
+      include inc/footer
+
+    include inc/scripts
+    
+    block scripts
+
+
+
