@@ -22,16 +22,20 @@ exports.index = function(req, res) {
     console.log(process.env.PWD);
 
     var appName = req.query.appName;
-    var packageName = req.query.packageName;
+    var orgName = req.query.orgName;
+    var companyId = req.query.companyId;
+    var classPrefix = req.query.classPrefix;
 
     console.log("App Name:" + appName);
-    console.log("Package Name:" + packageName);
+    console.log("Organization Name:" + orgName);
+    console.log("Company Identifier:" + companyId);
+    console.log("Class Prefix:" + classPrefix);
 
-    // Android Bootstrap ource directory
-    var sourceDir = process.env.PWD + '/android-bootstrap';
-    
+    // iOS Bootstrap source directory
+    var sourceDir = process.env.PWD + '/ios-bootstrap';
+
     // Temporary locationwhere the users project will be generated.
-    var destDir = process.env.PWD + '/tmp/' + packageName; 
+    var destDir = process.env.PWD + '/tmp/' + appName; 
 
     console.log("sourceDir: " + sourceDir);
     console.log("destDir: " + destDir); 
@@ -46,7 +50,7 @@ exports.index = function(req, res) {
 
 
     theFiles.forEach(function(currentFile) {
-      var genFileFunc = generateFileFunc(destDir + "/" + currentFile, packageName, appName);
+      var genFileFunc = generateFileFunc(destDir + "/" + currentFile, appName, companyId, classPrefix);
       callItems.push(genFileFunc);
 
     });
@@ -58,14 +62,78 @@ exports.index = function(req, res) {
       } else {
         
         // Now, all items have been executed, perform the copying/etc.
-        createSourceDirectories(destDir, packageName);
-        copySourceDirectories(destDir, packageName); 
-        removeBootstrapDirectories(destDir); 
-        
-        sendContentAsZip(destDir, res);
+        renameSourceDirectories(destDir, appName);
+        removeGitModuleFiles(destDir);
 
+        sendContentAsZip(destDir, res);
       }
-    }); 
+    });
+}
+
+function generateFileFunc(file, appName, companyId, classPrefix) {
+  return function(callback) {
+    generateFile(file, appName, companyId, classPrefix, callback);
+  }
+}
+
+function generateFile(file, appName, companyId, classPrefix, callback) {
+
+  var stats = fs.lstatSync(file);
+  if(!stats.isDirectory() && !file.endsWith(".png")) { 
+    // Only work with text files, no directories or png files.  
+    // Above == terrible code, but for android-bootstrap, it works. Pragmatic & KISS. FTW.
+    
+    // Must include the encoding otherwise the raw buffer will
+    // be returned as the data.
+    var data = fs.readFileSync(file, 'utf-8');
+        
+    //console.log("Current File: " + file);
+  
+    console.log("File: " + file);
+    // Sure, we could chain these, but this is easier to read.
+    data = replaceAppName(data, appName);
+    data = replaceCompanyId(data, companyId);
+    data = replaceClassPrefix(data, classPrefix);
+
+    // Check for a class prefixed file name to replace it
+    if (file.fileNameStartsWith('IOB')) {
+      renamePrefixFile(file, classPrefix);
+    }
+
+    // Finally all done doing replacing, save this bad mother.
+    fs.writeFileSync(file, data); 
+  }
+
+  // Call back to async lib. 
+  callback(null, file);
+}
+
+function replaceAppName(fileContents, newAppName) {
+  var APP_NAME = "iOS Bootstrap";
+  var nameRegExp = new RegExp(APP_NAME, 'g'); // global search
+
+  return fileContents.replace(nameRegExp, newAppName);
+}
+
+function replaceCompanyId(fileContents, newCompanyId) {
+  var BOOTSTRAP_TOKEN = "com.iosbootstrap";
+  var tokenRegExp = new RegExp(BOOTSTRAP_TOKEN, 'g'); // global search
+
+  return fileContents.replace( tokenRegExp, newCompanyId );
+}
+
+function replaceClassPrefix(fileContents, newClassPrefix) {
+  var PREFIX = "IOB";
+  var tokenRegExp = new RegExp(PREFIX, 'g'); // global search
+
+  return fileContents.replace( tokenRegExp, newClassPrefix );
+}
+
+function renamePrefixFile(file, classPrefix) {
+  var oldFile = file;
+  file = file.replace('IOB', classPrefix);
+  console.log('Renaming file: ' + oldFile + ' To new file: ' + file);
+  fs.renameSync(oldFile, file);
 }
 
 function sendContentAsZip(destDir, res) {
@@ -83,18 +151,14 @@ function sendContentAsZip(destDir, res) {
       archive.toBuffer(function(buff) {
         
         res.contentType('zip');
-        res.setHeader('Content-disposition', 'attachment; filename=android-bootstrap.zip');
+        res.setHeader('Content-disposition', 'attachment; filename=ios-bootstrap.zip');
         res.send(buff);
         res.end();        
 
-        wrench.rmdirSyncRecursive(destDir, false)
-      }); 
-
-      
+        wrench.rmdirSyncRecursive(destDir, false);
+      });
     }
-      
   });
- 
 }
 
 function getFileObjectsFrom(destDir, files) {
@@ -108,147 +172,44 @@ function getFileObjectsFrom(destDir, files) {
   return fileObjs;
 }
 
-function generateFileFunc(file, packageName, appName) {
-  return function(callback) {
-    generateFile(file, packageName, appName, callback);
-  }
-}
-
-function removeBootstrapDirectories(destDir) {
-
-  // TODO: remove the old bootstrap source, unit-test and integration-test folders that are not valid anymore.
-  console.log("Removing temporary work directories.");
-  
-  // Clean up - delete all the files we were just working with. 
-  var bootstrapSourceDir = destDir + "/app/src/main/java/com/donnfelker"; 
-  var bootstrapUnitTestDir = destDir + "/app/src/test/java/com/donnfelker"; 
-  var integrationTestDir = destDir +  "/integration-tests/src/main/java/com/donnfelker"; 
-
-  console.log("Removing: " + bootstrapSourceDir);
-  console.log("Removing: " + bootstrapUnitTestDir);
-  console.log("Removing: " + integrationTestDir);
-  
-  wrench.rmdirSyncRecursive(bootstrapSourceDir, false);
-  wrench.rmdirSyncRecursive(bootstrapUnitTestDir, false);
-  wrench.rmdirSyncRecursive(integrationTestDir, false);
-
-}
-
-// Creates the various new folder structures needed for the users new project. 
-function createSourceDirectories(destDir, packageName) {
-
-  var newPathChunk = getNewFilePath(packageName);
-
-  var newSourceDirectory = destDir + "/app/src/main/java/" + newPathChunk; 
-  console.log("Creating new source directory at: " + newSourceDirectory);
-  wrench.mkdirSyncRecursive(newSourceDirectory); 
-
-  var newUnitTestDirectory = destDir + "/app/src/test/java/" + newPathChunk; 
-  console.log("Creating new source directory at: " + newUnitTestDirectory);
-  wrench.mkdirSyncRecursive(newUnitTestDirectory); 
-
-  var newIntegrationTestDirectory = destDir + "/integration-tests/src/main/java/" + newPathChunk; 
-  console.log("Creating new integration tests directory at: " + newIntegrationTestDirectory);
-  wrench.mkdirSyncRecursive(newIntegrationTestDirectory);     
-}
-
-function copySourceDirectories(destDir, packageName) {
+function renameSourceDirectories(destDir, appName) {
 
   console.log(destDir);
-  console.log(packageName);
-  
-  var newPathChunk = getNewFilePath(packageName);
+  console.log(appName);
 
-  var oldSourceDir = destDir  +  "/app/src/main/java/com/donnfelker/android/bootstrap";  
-  var newSourceDir = destDir    +  "/app/src/main/java/" + newPathChunk; 
+  var oldSourceDir = destDir + "/iOS Bootstrap";  
+  var newSourceDir = destDir + "/" + appName;
   console.log("Copying source from" + oldSourceDir + " to directory " + newSourceDir);
-  wrench.copyDirSyncRecursive(oldSourceDir, newSourceDir); 
+  fs.renameSync(oldSourceDir, newSourceDir);
 
-  var oldUnitTestDir = destDir + "/app/src/test/java/com/donnfelker/android/bootstrap";
-  var newUnitTestDir = destDir + "/app/src/test/java/" + newPathChunk; 
-  console.log("Copying source from" + oldUnitTestDir + " to directory " + newUnitTestDir);
-  wrench.copyDirSyncRecursive(oldUnitTestDir, newUnitTestDir); 
+  var oldTestDir = destDir + "/iOS Bootstrap Tests";
+  var newTestDir = destDir + "/" + appName + " Tests"; 
+  console.log("Copying source from" + oldTestDir + " to directory " + newTestDir);
+  fs.renameSync(oldTestDir, newTestDir);
 
-  var oldIntegrationTestDir = destDir + "/integration-tests/src/main/java/com/donnfelker/android/bootstrap";
-  var newIntegrationTestDir = destDir + "/integration-tests/src/main/java/" + newPathChunk; 
-  console.log("Copying source from" + oldIntegrationTestDir + " to directory " + newIntegrationTestDir);
-  wrench.copyDirSyncRecursive(oldIntegrationTestDir, newIntegrationTestDir);     
+  var oldProjDir = destDir + "/iOS Bootstrap.xcodeproj";  
+  var newProjDir = destDir + "/" + appName + ".xcodeproj";
+  console.log("Copying source from" + oldProjDir + " to directory " + newProjDir);
+  fs.renameSync(oldProjDir, newProjDir);
+}
+
+function removeGitModuleFiles(destDir) {
+  var git = destDir + '/.git';
+  var gitIgnore = destDir + '/.gitignore';
+  
+  fs.unlinkSync(git);
+  fs.unlinkSync(gitIgnore);
 }
 
 String.prototype.endsWith = function(suffix) {
     return this.indexOf(suffix, this.length - suffix.length) !== -1;
 };
 
-function generateFile(file, packageName, appName, callback) {
+String.prototype.fileNameStartsWith = function(prefix) {
+    // Get fill name parts
+    var parts = this.split('/');
+    var fileName = parts[parts.length - 1];
+    console.log('fileNameStartsWith: ' + fileName);
+    return fileName.indexOf(prefix, 0) === 0;
+};
 
-  var stats = fs.lstatSync(file);
-  if(!stats.isDirectory() && !file.endsWith(".png")) { 
-    // Only work with text files, no directories or png files.  
-    // Above == terrible code, but for android-bootstrap, it works. Pragmatic & KISS. FTW.
-    
-    // Must include the encoding otherwise the raw buffer will
-    // be returned as the data.
-    var data = fs.readFileSync(file, 'utf-8');
-        
-    //console.log("Current File: " + file);
-  
-    console.log("File: " + file);
-    // Sure, we could chain these, but this is easier to read.
-    data = replacePackageName(data, packageName);
-    data = replaceAuthToken(data, packageName);
-    data = replaceAppName(data, appName);
-    data = replaceHyphenatedNames(data, packageName)
-
-    // Finally all done doing replacing, save this bad mother.
-    fs.writeFileSync(file, data); 
-  }
-
-   // Call back to async lib. 
-    callback(null, file);
-}
-
-
-// Turns a package name into a file path string. 
-// Example: com.foo.bar.bang turns into com\foo\bar\bang
-function getNewFilePath(newPackageName) {
-  return newPackageName.split('.').join('/'); 
-}
-
-function getOldFilePath() {
-  return "com.donnfelker.android.bootstrap".split('.').join('/'); 
-}
-
-// Takes the old boostrap file name and returns the new file name
-// that is created via the transform from the new package name. 
-function getBootstrappedFileName(bootstrapFileName, newPackageName) {
-  return bootstrapFileName.replace( getOldFilePath(), getNewFilePath(newPackageName) );
-}
-
-function replacePackageName(fileContents, newPackageName) {
-  var BOOTSTRAP_PACKAGE_NAME = "com.donnfelker.android.bootstrap"; // replace all needs a regex with the /g (global) modifier
-  var packageNameRegExp = new RegExp(BOOTSTRAP_PACKAGE_NAME, 'g');
-          
-  // Replace package name
-  return fileContents.replace(packageNameRegExp, newPackageName);
-}
-
-function replaceAuthToken(fileContents, newPackageName) {
-  var BOOTSTRAP_TOKEN = "com.androidbootstrap";
-  var tokenRegExp = new RegExp(BOOTSTRAP_TOKEN, 'g'); // global search
-
-  return fileContents.replace( tokenRegExp, newPackageName );
-}
-
-function replaceAppName(fileContents, newAppName) {
-  var APP_NAME = "Android Bootstrap";
-  var nameRegExp = new RegExp(APP_NAME, 'g'); // global search
-
-  return fileContents.replace(nameRegExp, newAppName);
-}
-
-function replaceHyphenatedNames(fileContents, newPackageName) {
-  var newHyphenatedName = newPackageName.toLowerCase().split('.').join('-');
-  var hyphenatedRegExp = new RegExp("android-bootstrap", 'g'); // global search
-
-  return fileContents.replace(hyphenatedRegExp, newHyphenatedName);
-}

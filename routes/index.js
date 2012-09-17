@@ -4,5 +4,5 @@
  */
 
 exports.index = function(req, res){
-  res.render('index', { title: 'Android Bootstrap' });
+  res.render('index', { title: 'iOS Bootstrap' });
 };
