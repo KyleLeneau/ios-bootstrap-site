@@ -4,6 +4,7 @@ var wrench = require('wrench'),
     fs = require('fs'),
     async = require('async'),
     zip = require("node-native-zip");
+
 /*
  * Project generator route. 
  * This entire route is super brute force and rather naive. However, it works and is easy to follow. 
@@ -21,21 +22,25 @@ exports.index = function(req, res) {
 
     console.log(process.env.PWD);
 
-    var appName = req.query.appName;
-    var orgName = req.query.orgName;
-    var companyId = req.query.companyId;
-    var classPrefix = req.query.classPrefix;
+    // Improvements:
+    //   get the latest source from github automatically
+    //   
 
-    console.log("App Name:" + appName);
-    console.log("Organization Name:" + orgName);
-    console.log("Company Identifier:" + companyId);
-    console.log("Class Prefix:" + classPrefix);
+    var app = {
+      name: req.query.appName,
+      org: req.query.orgName,
+      bundleId: req.query.bundleId,
+      prefix: req.query.classPrefix
+    };
+
+    console.log("App Inputs: ");
+    console.log(app);
 
     // iOS Bootstrap source directory
     var sourceDir = process.env.PWD + '/ios-bootstrap';
 
     // Temporary locationwhere the users project will be generated.
-    var destDir = process.env.PWD + '/tmp/' + appName; 
+    var destDir = process.env.PWD + '/tmp/' + app.name; 
 
     console.log("sourceDir: " + sourceDir);
     console.log("destDir: " + destDir); 
@@ -43,40 +48,45 @@ exports.index = function(req, res) {
     // Copy the files to temp directory. 
     wrench.copyDirSyncRecursive(sourceDir, destDir);
 
+    // Read the files into an array
     var theFiles = wrench.readdirSyncRecursive(destDir);
     console.log(theFiles);
 
+    // Generate an array of functions to call in parallel later
     var callItems = [];
-
-
     theFiles.forEach(function(currentFile) {
-      var genFileFunc = generateFileFunc(destDir + "/" + currentFile, appName, companyId, classPrefix);
+      var genFileFunc = generateFileFunc(destDir + "/" + currentFile, app);
       callItems.push(genFileFunc);
-
     });
 
     async.parallel(callItems, function(err, results) {
       
       if(err) {
         console.error("**** ERROR ****");
+        console.error(err);
       } else {
         
         // Now, all items have been executed, perform the copying/etc.
-        renameSourceDirectories(destDir, appName);
+        renameSourceDirectories(destDir, app.name);
         removeGitModuleFiles(destDir);
 
-        sendContentAsZip(destDir, res);
+        sendContentAsZip(app, destDir, res);
       }
     });
 }
 
-function generateFileFunc(file, appName, companyId, classPrefix) {
+function generateFileFunc(file, app) {
   return function(callback) {
-    generateFile(file, appName, companyId, classPrefix, callback);
+    generateFile(file, app, callback);
   }
 }
 
-function generateFile(file, appName, companyId, classPrefix, callback) {
+function generateFile(file, app, callback) {
+
+  // Check for a class prefixed file name to replace it
+  if (file.fileNameStartsWith('IOB')) {
+    file = renamePrefixFile(file, app.prefix);
+  }
 
   var stats = fs.lstatSync(file);
   if(!stats.isDirectory() && !file.endsWith(".png")) { 
@@ -86,18 +96,16 @@ function generateFile(file, appName, companyId, classPrefix, callback) {
     // Must include the encoding otherwise the raw buffer will
     // be returned as the data.
     var data = fs.readFileSync(file, 'utf-8');
-        
-    //console.log("Current File: " + file);
-  
-    console.log("File: " + file);
-    // Sure, we could chain these, but this is easier to read.
-    data = replaceAppName(data, appName);
-    data = replaceCompanyId(data, companyId);
-    data = replaceClassPrefix(data, classPrefix);
+    console.log("Current File: " + file);
 
-    // Check for a class prefixed file name to replace it
-    if (file.fileNameStartsWith('IOB')) {
-      renamePrefixFile(file, classPrefix);
+    // Sure, we could chain these, but this is easier to read.
+    data = replaceAppName(data, app.name);
+    data = replaceBundleId(data, app.bundleId);
+    data = replaceClassPrefix(data, app.prefix);    
+
+    // Replace file header comment block
+    if (file.endsWith('.h') || file.endsWith('.m')) {
+      // data = replaceFileHeaderComments(data, app.comments)
     }
 
     // Finally all done doing replacing, save this bad mother.
@@ -115,11 +123,11 @@ function replaceAppName(fileContents, newAppName) {
   return fileContents.replace(nameRegExp, newAppName);
 }
 
-function replaceCompanyId(fileContents, newCompanyId) {
+function replaceBundleId(fileContents, newBundleId) {
   var BOOTSTRAP_TOKEN = "com.iosbootstrap";
   var tokenRegExp = new RegExp(BOOTSTRAP_TOKEN, 'g'); // global search
 
-  return fileContents.replace( tokenRegExp, newCompanyId );
+  return fileContents.replace( tokenRegExp, newBundleId );
 }
 
 function replaceClassPrefix(fileContents, newClassPrefix) {
@@ -134,9 +142,10 @@ function renamePrefixFile(file, classPrefix) {
   file = file.replace('IOB', classPrefix);
   console.log('Renaming file: ' + oldFile + ' To new file: ' + file);
   fs.renameSync(oldFile, file);
+  return file;
 }
 
-function sendContentAsZip(destDir, res) {
+function sendContentAsZip(app, destDir, res) {
   
   var fileObjects = getFileObjectsFrom(destDir, wrench.readdirSyncRecursive(destDir));
   
@@ -151,7 +160,7 @@ function sendContentAsZip(destDir, res) {
       archive.toBuffer(function(buff) {
         
         res.contentType('zip');
-        res.setHeader('Content-disposition', 'attachment; filename=ios-bootstrap.zip');
+        res.setHeader('Content-disposition', 'attachment; filename=' + app.name + '.zip');
         res.send(buff);
         res.end();        
 
@@ -201,8 +210,8 @@ function removeGitModuleFiles(destDir) {
   fs.unlinkSync(gitIgnore);
 }
 
-String.prototype.endsWith = function(suffix) {
-    return this.indexOf(suffix, this.length - suffix.length) !== -1;
+String.prototype.endsWith = function(input) {
+  return this.indexOf(input, this.length - input.length) !== -1;
 };
 
 String.prototype.fileNameStartsWith = function(prefix) {
